@@ -12,6 +12,8 @@ SCHEMA = {'ID': pd.Series([], dtype='str'),
           'Split': pd.Series([], dtype='str')
           }
 
+FEATURE_RESCALING = ["Open", "High", "Low", "Close", "Volume"]
+
 
 def get_dataframe(data_path,
                   train_val_test_split=None):
@@ -30,6 +32,9 @@ def get_dataframe(data_path,
         stock_data = stock_data[:-1]
         # The ID of each intermediate dataframe is the name of the file without '.txt'
         stock_data['ID'] = file[0:(len(file) - 4)]
+        # Rescale in [-1, 1]
+        for feature in FEATURE_RESCALING:
+            stock_data[feature] = rescaling(stock_data[feature])
         # Assign the split names
         rows = stock_data.shape[0]
         train_split = [0, round(train_val_test_split[0] * rows)]
@@ -45,3 +50,7 @@ def get_dataframe(data_path,
         df = pd.concat([df, stock_data], axis=0)
 
     return df
+
+
+def rescaling(x):
+    return ((x - max(x)) + (x - min(x))) / (max(x) - min(x))
