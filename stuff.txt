@@ -1,0 +1,27 @@
+# INPUT : Open, Close, High, Low, Volume? (giorno corrente)
+# OUTPUT: Close Up/Down (0,1) (girono successivo)
+
+# Short = Down = Conviene vendere = 0
+# Long  = Up = Conviene comprare = 1
+# Idle  = Incertezza del risultato
+
+# Per il training Short/Logn viene calcolato facendo:
+# 1 se (close - open) giorno successivo > 0 altrimenti 0
+
+# 1. INPUT -> GAF -> CNN ensemble -> OUTPUT
+# 2. INPUT -> 4 GAF -> 1 IMG -> CNN ensemble -> OUTPUT
+# 2. INPUT -> Candle Stick Chart -> CNN ensemble -> OUTPUT
+# 3. INPUT -> GAF (canali su sliding window) -> CNN ensemble -> OUTPUT
+
+# Successivo capire se Long/Short si può trasformare in un numero quantitativo
+
+# 4h inizia 1/1 00:00 finisce 4/1 08:00
+# label sulla prima open e ultima close del 5/1
+
+# 1d block -> 20x20 (20d)
+# 2d block -> 20x20 (40d)
+# 3d block -> 20x20 (80d)
+# 5d block -> 20x20 (100d)
+
+# 9d inizia 1/1 finisce 10/1
+# label su open/close 11/1
