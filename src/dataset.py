@@ -33,21 +33,22 @@ def get_dataframe(data_path,
         # The ID of each intermediate dataframe is the name of the file without '.txt'
         stock_data['ID'] = file[0:(len(file) - 4)]
         # Rescale in [-1, 1]
-        for feature in FEATURE_RESCALING:
-            stock_data[feature] = rescaling(stock_data[feature])
-        # Assign the split names
-        rows = stock_data.shape[0]
-        train_split = [0, round(train_val_test_split[0] * rows)]
-        val_split = [round(train_val_test_split[0] * rows),
-                     (round((train_val_test_split[0] + train_val_test_split[1]) * rows))]
-        test_split = [(round((train_val_test_split[0] + train_val_test_split[1]) * rows)), rows]
-        stock_data['Split'] = None
-        stock_data.loc[train_split[0]:train_split[1], "Split"] = "train"
-        stock_data.loc[val_split[0]:val_split[1], "Split"] = "validation"
-        stock_data.loc[test_split[0]:test_split[1], "Split"] = "test"
+        if not stock_data.empty:
+            for feature in FEATURE_RESCALING:
+                stock_data[feature] = rescaling(stock_data[feature])
+            # Assign the split names
+            rows = stock_data.shape[0]
+            train_split = [0, round(train_val_test_split[0] * rows)]
+            val_split = [round(train_val_test_split[0] * rows),
+                         (round((train_val_test_split[0] + train_val_test_split[1]) * rows))]
+            test_split = [(round((train_val_test_split[0] + train_val_test_split[1]) * rows)), rows]
+            stock_data['Split'] = None
+            stock_data.loc[train_split[0]:train_split[1], "Split"] = "train"
+            stock_data.loc[val_split[0]:val_split[1], "Split"] = "validation"
+            stock_data.loc[test_split[0]:test_split[1], "Split"] = "test"
 
-        # Concatenate the dataframes
-        df = pd.concat([df, stock_data], axis=0)
+            # Concatenate the dataframes
+            df = pd.concat([df, stock_data], axis=0)
 
     return df
 
