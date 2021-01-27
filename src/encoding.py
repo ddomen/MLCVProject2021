@@ -1,15 +1,17 @@
 import numpy as np
 
 
-def period_arc_cos(x, period=1, pixels=20):
-    start = period - 1
-    stop = (pixels + 1) * period
-    return np.arccos(x[start:(stop - 1):period])
+def period_arc_cos(x):
+    return np.arccos(rescaling(x))
 
 
-def gasf(x, period=1, pixels=20):
-    return np.array([[np.cos(i + j) for j in period_arc_cos(x, period, pixels)] for i in period_arc_cos(x, period, pixels)])
+def rescaling(x):
+    return ((x - max(x)) +(x - min(x)))/ (max(x) - min(x))
 
 
-def gadf(x, period=1, pixels=20):
-    return np.array([[np.cos(i - j) for j in period_arc_cos(x, period, pixels)] for i in period_arc_cos(x, period, pixels)])
+def gasf(x):
+    return np.array([[np.cos(i + j) for j in period_arc_cos(x)] for i in period_arc_cos(x)])
+
+
+def gadf(x):
+    return np.array([[np.cos(i - j) for j in period_arc_cos(x)] for i in period_arc_cos(x)])

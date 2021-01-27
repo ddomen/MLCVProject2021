@@ -3,6 +3,7 @@ import pandas as pd
 import os
 
 from matplotlib import cm
+from PIL import Image
 
 from src.encoding import gasf
 
@@ -16,8 +17,6 @@ SCHEMA = {'ID': pd.Series([], dtype='str'),
           'Trend': pd.Series([], dtype='bool'),
           'Split': pd.Series([], dtype='str')
           }
-
-FEATURE_RESCALING = ["Open", "High", "Low", "Close", "Volume"]
 
 
 def get_dataframe(data_path,
@@ -39,8 +38,6 @@ def get_dataframe(data_path,
         stock_data['ID'] = file[0:(len(file) - 4)]
         # Rescale in [0, 1]
         if not stock_data.empty:
-            for feature in FEATURE_RESCALING:
-                stock_data[feature] = rescaling(stock_data[feature])
             # Assign the split names
             rows = stock_data.shape[0]
             train_split = [0, round(train_val_test_split[0] * rows)]
@@ -58,21 +55,45 @@ def get_dataframe(data_path,
     return df
 
 
-def rescaling(x):
-    return (x - min(x)) / (max(x) - min(x))
+def img_dataset(df, pixels, feature, periods, max_period=None):
+    my_cm = cm.get_cmap('Spectral')
+    max_period = (max_period or max(periods)) * pixels
+
+    subset_dict = {}
+
+    for period in periods:
+
+        imgs_list = []
+        labels_list = []
+        split_list = []
+        ids_list = []
+
+        for i in range(len(df) - max_period):
+            img = gasf(df[feature][max_period - period*pixels + i:i + max_period:period])
+            img = (img - np.min(img)) / (np.max(img) - np.min(img))
+            img = my_cm(img)
+            imgs_list.append(img[:,:,:3])
+            labels_list.append(np.array(df['Trend'][i + max_period]))
+            split_list.append(np.array(df['Split'][i + max_period]))
+            ids_list.append(np.array(df['ID'][i + max_period]))
+
+        subset_dict[period] = np.stack(imgs_list, axis=0), np.stack(labels_list, axis=0), np.stack(split_list, axis=0), np.stack(ids_list, axis=0)
+
+    return subset_dict
 
 
-def img_dataset(df, pixels, period):
-    my_cm = cm.get_cmap('hsv')
+def save_dataframe_as_images(path, ids, images, labels, splits, period):
+    os.makedirs(f"{path}/train", exist_ok=True)
+    os.makedirs(f"{path}/validation", exist_ok=True)
+    os.makedirs(f"{path}/test", exist_ok=True)
 
-    imgs_list = []
-    labels_list = []
-    split_list = []
-    for i in range(0, len(df) - pixels, period):
-        img = gasf(df['Close'][i:len(df)], pixels=pixels, period=period)
-        img = my_cm(img)
-        imgs_list.append(img)
-        labels_list.append(np.array(df['Trend'][i + pixels]))
-        split_list.append(np.array(df['Split'][i + pixels]))
+    cont = {"train": 0,
+            "validation": 0,
+            "test": 0}
 
-    return np.stack(imgs_list, axis=0), np.stack(labels_list, axis=0), np.stack(split_list, axis=0)
+    for id, img, label, split in zip(ids, images, labels, splits):
+        file_name = str(id) + "_" + str(period) + "_" + str(cont[split]) + "_" + str(int(label)) + ".png"
+        img = Image.fromarray((img*255).astype(np.uint8))
+        img.save(f"{path}/{split}/{file_name}")
+
+        cont[split] += 1
