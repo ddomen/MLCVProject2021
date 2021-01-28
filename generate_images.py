@@ -36,7 +36,7 @@ if __name__ == '__main__':
     parser.add_argument('-f', '--features', action='append', default=[], type=str.lower, choices=feat_choiches, help='Features to calculate the images')
     parser.add_argument('-t', '--periods', action='append', default=[], type=int, choices=period_choiches, help='Periods')
     parser.add_argument('-mt', '--max-period', default=None, type=int, help='Max period to calculate')
-    parser.add_argument('-i', '--input', default='dataframe.hdf5', type=str, help='File where to load the dataset')
+    parser.add_argument('-i', '--input', default='Data/dataframe.hdf5', type=str, help='File where to load the dataset')
     parser.add_argument('-o', '--output', default='Data/Images/', type=str, help='Folder where to save images')
     parser.add_argument('-s', '--start', default=0, type=int, help='Starting index')
     args = parser.parse_args()
@@ -48,8 +48,8 @@ if __name__ == '__main__':
     PERIODS = args.periods if args.periods and len(args.periods) else period_choiches
     PIXELS = 20 if (args.pixels or 0) <= 0 else args.pixels
     MAX_PERIOD = args.max_period or None
-    OUTPUT = args.output or 'Data/Images'
-    INPUT = args.input or 'dataframe.hdf5'
+    OUTPUT = args.output or 'Data/Images/'
+    INPUT = args.input or 'Data/dataframe.hdf5'
     PROCESSES = args.processes or multiprocessing.cpu_count()
     START = args.start or 0
 
