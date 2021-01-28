@@ -1,8 +1,10 @@
 import os
+import torch
 import numpy as np
 import pandas as pd
 from PIL import Image
 from matplotlib import cm
+from torch.utils.data import Dataset
 
 from src.encoding import gasf
 
@@ -142,3 +144,35 @@ def save_dataframe_as_images(path, ids, images, labels, splits, period):
         img.save(os.path.join(path, split, file_name))
 
         cont[split] += 1
+    
+class ConcatenateImgs(object):
+    def __call__(self, images):
+        raw_1 = torch.cat((images[0], images[1]), dim=0)
+        raw_2 = torch.cat((images[2], images[3]), dim=0)
+
+        return torch.cat((raw_1, raw_2), dim=1)
+
+
+class CustomDataSet(Dataset):
+    def __init__(self, main_dir, transform):
+        self.main_dir = main_dir
+        self.transform = transform
+        self.images = os.listdir(main_dir)
+
+    def __len__(self):
+        return int(len(self.images) / 4)
+
+    def __getitem__(self, idx):
+        img_loc = os.path.join(self.main_dir, self.images[idx])
+        img_info = img_loc.split(sep="_")
+        label = int(img_info[-1].replace(".png", ""))
+        images = []
+        for i in [1, 2, 3, 5]:
+            img_info[-3] = str(i)
+            img_loc = str.join("_", img_info)
+            image = Image.open(img_loc).convert("RGB")
+            images.append(torch.from_numpy(np.asarray(image, dtype="float32") / 127.5 - 1))
+
+        tensor_image = self.transform(images)
+
+        return tensor_image, label
