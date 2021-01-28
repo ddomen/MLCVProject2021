@@ -1,4 +1,5 @@
 from src.dataset import *
+import os
 
 def generate_data(args):
     index, id = -1, '???'
@@ -8,7 +9,7 @@ def generate_data(args):
         for feature in features:
             dict_images = img_dataset(data, pixels, feature, periods, max_period=max_period)
             for period, (imgs_subset, labels_subset, split_subset, ids_subset) in dict_images.items():
-                save_dataframe_as_images(path + feature, ids_subset, imgs_subset, labels_subset, split_subset, period)
+                save_dataframe_as_images(os.path.join(path, feature), ids_subset, imgs_subset, labels_subset, split_subset, period)
         
         return True, index
     except KeyboardInterrupt:
@@ -36,7 +37,7 @@ if __name__ == '__main__':
     parser.add_argument('-t', '--periods', action='append', default=[], type=int, choices=period_choiches, help='Periods')
     parser.add_argument('-mt', '--max-period', default=None, type=int, help='Max period to calculate')
     parser.add_argument('-i', '--input', default='dataframe.hdf5', type=str, help='File where to load the dataset')
-    parser.add_argument('-o', '--output', default='Data/Images', type=str, help='Folder where to save images')
+    parser.add_argument('-o', '--output', default='Data/Images/', type=str, help='Folder where to save images')
     parser.add_argument('-s', '--start', default=0, type=int, help='Starting index')
     args = parser.parse_args()
 
@@ -72,19 +73,21 @@ Loading Dataset...''')
 
     max_index = START
     ids = tuple(df['id'].unique())[START:]
-    ids_done = []
+    ids_done = list(range(START))
 
     def make_desc():
-        best_sure_index = 0
-        for best in range(max_index, 0, -1):
+        for min_index in range(max_index, 0, -1):
+            if min_index == 1 and 1 not in ids_done:
+                break
             correct = True
-            for i in range(best):
+            for i in range(1, min_index):
                 if i not in ids_done:
                     correct = False
                     break
             if correct:
-                best_sure_index = best
-                return f'Features - Best/Max index {best_sure_index}/{max_index}'
+                return f'Factories - Min/Max index {min_index}/{max_index}'
+        return f'Factories - Min/Max index 0/{max_index}'
+        
 
     def get_next_sub_dataset():
         index = 0
@@ -94,10 +97,9 @@ Loading Dataset...''')
             yield index, id, OUTPUT, sub_set, FEATURES, PERIODS, PIXELS, MAX_PERIOD
 
 
-
-    with multiprocessing.Pool(PROCESSES) as pool, tqdm.tqdm(initial=0, total=len(ids), desc='Factories', unit='fact') as bar:
+    with multiprocessing.Pool(PROCESSES) as pool, tqdm.tqdm(initial=0, total=len(ids), desc=make_desc(), unit='fact') as global_bar:
         for success, index in pool.imap_unordered(generate_data, iter(get_next_sub_dataset())):
             max_index = max(max_index, index)
             ids_done.append(index)
-            bar.set_description_str(make_desc())
-            bar.update()
+            global_bar.set_description_str(make_desc())
+            global_bar.update()
