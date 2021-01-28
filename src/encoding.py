@@ -6,7 +6,7 @@ def period_arc_cos(x):
 
 
 def rescaling(x):
-    return ((x - max(x)) +(x - min(x)))/ (max(x) - min(x))
+    return ((x - max(x)) +(x - min(x))) / (max(x) - min(x))
 
 
 def gasf(x):

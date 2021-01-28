@@ -2,10 +2,13 @@ import numpy as np
 import pandas as pd
 import os
 
+import torch
 from matplotlib import cm
 from PIL import Image
 
 from src.encoding import gasf
+
+from torch.utils.data import Dataset
 
 SCHEMA = {'ID': pd.Series([], dtype='str'),
           'Date': pd.Series([], dtype='str'),
@@ -69,17 +72,28 @@ def img_dataset(df, pixels, feature, periods, max_period=None):
         ids_list = []
 
         for i in range(len(df) - max_period):
-            img = gasf(df[feature][max_period - period*pixels + i:i + max_period:period])
+            img = gasf(df[feature][max_period - period * pixels + i:i + max_period:period])
             img = (img - np.min(img)) / (np.max(img) - np.min(img))
             img = my_cm(img)
-            imgs_list.append(img[:,:,:3])
+            imgs_list.append(img[:, :, :3])
             labels_list.append(np.array(df['Trend'][i + max_period]))
             split_list.append(np.array(df['Split'][i + max_period]))
             ids_list.append(np.array(df['ID'][i + max_period]))
 
-        subset_dict[period] = np.stack(imgs_list, axis=0), np.stack(labels_list, axis=0), np.stack(split_list, axis=0), np.stack(ids_list, axis=0)
+        subset_dict[period] = np.stack(imgs_list, axis=0), np.stack(labels_list, axis=0), np.stack(split_list,
+                                                                                                   axis=0), np.stack(
+            ids_list, axis=0)
 
     return subset_dict
+
+
+def generate_dataset_imgs(path, df, periods, features, pixels):
+    for id in df['ID'].unique():
+        df_subset = df[df['ID'] == id]
+        for feature in features:
+            dict_images = img_dataset(df_subset, pixels, feature, periods)
+            for period, (imgs_subset, labels_subset, split_subset, ids_subset) in dict_images.items():
+                save_dataframe_as_images(path + feature, ids_subset, imgs_subset, labels_subset, split_subset, period)
 
 
 def save_dataframe_as_images(path, ids, images, labels, splits, period):
@@ -93,7 +107,40 @@ def save_dataframe_as_images(path, ids, images, labels, splits, period):
 
     for id, img, label, split in zip(ids, images, labels, splits):
         file_name = str(id) + "_" + str(period) + "_" + str(cont[split]) + "_" + str(int(label)) + ".png"
-        img = Image.fromarray((img*255).astype(np.uint8))
+        img = Image.fromarray((img * 255).astype(np.uint8))
         img.save(f"{path}/{split}/{file_name}")
 
         cont[split] += 1
+
+
+class ConcatenateImgs(object):
+    def __call__(self, images):
+        raw_1 = torch.cat((images[0], images[1]), dim=0)
+        raw_2 = torch.cat((images[2], images[3]), dim=0)
+
+        return torch.cat((raw_1, raw_2), dim=1)
+
+
+class CustomDataSet(Dataset):
+    def __init__(self, main_dir, transform):
+        self.main_dir = main_dir
+        self.transform = transform
+        self.images = os.listdir(main_dir)
+
+    def __len__(self):
+        return int(len(self.images) / 4)
+
+    def __getitem__(self, idx):
+        img_loc = os.path.join(self.main_dir, self.images[idx])
+        img_info = img_loc.split(sep="_")
+        label = int(img_info[-1].replace(".png", ""))
+        images = []
+        for i in [1, 2, 3, 5]:
+            img_info[-3] = str(i)
+            img_loc = str.join("_", img_info)
+            image = Image.open(img_loc).convert("RGB")
+            images.append(torch.from_numpy(np.asarray(image, dtype="float32") / 127.5 - 1))
+
+        tensor_image = self.transform(images)
+
+        return tensor_image, label
