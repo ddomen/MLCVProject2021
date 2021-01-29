@@ -4,13 +4,15 @@ from torchvision import transforms
 from src.dataset import *
 
 if __name__ == '__main__':
-    df = get_dataframe(data_path='Data/ETFs')
+    df = get_dataframe(data_path='Data/Stocks', show_progress=True)
     print(df.head(5))
 
-    FEATURES = ["Open", "High", "Low", "Close", "Volume"]
+    df.to_hdf('dataframe.hdf5', 'stocks')
+
+    FEATURES = ["open", "high", "low", "close", "volume"]
     PERIODS = [1, 2, 3, 5]
     PIXELS = 20
-    path = 'Data_images/Close/train'
+    path = 'Data/Images/close/train'
 
     training_set = CustomDataSet(path, transform=transforms.Compose([ConcatenateImgs()]))
 
