@@ -8,7 +8,6 @@ from torch.utils.data import Dataset
 
 from src.encoding import gasf
 
-
 SCHEMA = {
     'id': 'str',
     'date': 'str',
@@ -23,10 +22,9 @@ SCHEMA = {
 
 
 def get_dataframe(data_path, train_val_test_split=None, show_progress=False):
-    
     if train_val_test_split is None:
         train_val_test_split = [0.7, 0.1, 0.2]
-    
+
     appended_data = []
 
     files = os.listdir(data_path)
@@ -42,7 +40,7 @@ def get_dataframe(data_path, train_val_test_split=None, show_progress=False):
             # Drop the 'OpenInt' column since it is equal to 0 in each file
             stock_data.drop(columns=['OpenInt'], inplace=True)
             # Lower case the data
-            stock_data.rename(columns={ column: column.lower() for column in stock_data.columns }, inplace=True)
+            stock_data.rename(columns={column: column.lower() for column in stock_data.columns}, inplace=True)
             # Compute the label and shift
             stock_data['trend'] = (stock_data['close'] > stock_data['open']) * 1
             stock_data['trend'] = stock_data['trend'].shift(periods=-1)
@@ -84,7 +82,6 @@ def get_dataframe(data_path, train_val_test_split=None, show_progress=False):
         df[data_key] = appended_data[data_key]
     # for data_key, data_type in SCHEMA.items():
     #     df[data_key] = appended_data[data_key].astype(data_type, copy=False)
-
 
     return df
 
@@ -144,7 +141,8 @@ def save_dataframe_as_images(path, ids, images, labels, splits, period):
         img.save(os.path.join(path, split, file_name))
 
         cont[split] += 1
-    
+
+
 class ConcatenateImgs(object):
     def __call__(self, images):
         raw_1 = torch.cat((images[0], images[1]), dim=0)
@@ -176,3 +174,8 @@ class CustomDataSet(Dataset):
         tensor_image = self.transform(images)
 
         return tensor_image, label
+
+
+class PermuteImgs(object):
+    def __call__(self, images):
+        return images.permute(2, 0, 1)
