@@ -151,11 +151,16 @@ class ConcatenateImgs(object):
         return torch.cat((raw_1, raw_2), dim=1)
 
 
+class PermuteImgs(object):
+    def __call__(self, images):
+        return images.permute(2, 0, 1)
+
+
 class CustomDataSet(Dataset):
     def __init__(self, main_dir, transform):
         self.main_dir = main_dir
         self.transform = transform
-        self.images = os.listdir(main_dir)
+        self.images = [x for x in os.listdir(main_dir) if (("aadr.us" in x) or ("aaxj.us" in x))]
 
     def __len__(self):
         return int(len(self.images) / 4)
@@ -163,19 +168,14 @@ class CustomDataSet(Dataset):
     def __getitem__(self, idx):
         img_loc = os.path.join(self.main_dir, self.images[idx])
         img_info = img_loc.split(sep="_")
-        label = int(img_info[-1].replace(".png", ""))
+        label = torch.tensor(float(img_info[-1].replace(".png", "")), dtype=torch.int64)
         images = []
         for i in [1, 2, 3, 5]:
             img_info[-3] = str(i)
             img_loc = str.join("_", img_info)
             image = Image.open(img_loc).convert("RGB")
-            images.append(torch.from_numpy(np.asarray(image, dtype="float32") / 127.5 - 1))
+            images.append(torch.from_numpy(np.asarray(image, dtype="float32") / 255))
 
         tensor_image = self.transform(images)
 
         return tensor_image, label
-
-
-class PermuteImgs(object):
-    def __call__(self, images):
-        return images.permute(2, 0, 1)
