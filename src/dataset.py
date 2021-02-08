@@ -8,7 +8,6 @@ from torch.utils.data import Dataset
 
 from src.encoding import gasf, gadf
 
-
 SCHEMA = {
     'id': 'str',
     'date': 'str',
@@ -24,7 +23,6 @@ SCHEMA = {
 
 
 def get_dataframe(data_path, train_val_test_split=None, show_progress=False):
-    
     if train_val_test_split is None:
         train_val_test_split = [1, 0, 0]
     
@@ -43,7 +41,7 @@ def get_dataframe(data_path, train_val_test_split=None, show_progress=False):
             # Drop the 'OpenInt' column since it is equal to 0 in each file
             stock_data.drop(columns=['OpenInt'], inplace=True)
             # Lower case the data
-            stock_data.rename(columns={ column: column.lower() for column in stock_data.columns }, inplace=True)
+            stock_data.rename(columns={column: column.lower() for column in stock_data.columns}, inplace=True)
             # Compute the label and shift
             stock_data['trend'] = (stock_data['close'] > stock_data['open']) * 1
             stock_data['trend'] = stock_data['trend'].shift(periods=-1)
@@ -86,7 +84,6 @@ def get_dataframe(data_path, train_val_test_split=None, show_progress=False):
         df[data_key] = appended_data[data_key]
     # for data_key, data_type in SCHEMA.items():
     #     df[data_key] = appended_data[data_key].astype(data_type, copy=False)
-
 
     return df
 
@@ -146,7 +143,8 @@ def save_dataframe_as_images(path, ids, images, labels, splits, period):
         img.save(os.path.join(path, split, file_name))
 
         cont[split] += 1
-    
+
+
 class ConcatenateImgs(object):
     def __call__(self, images):
         raw_1 = torch.cat((images[0], images[1]), dim=0)
@@ -155,11 +153,16 @@ class ConcatenateImgs(object):
         return torch.cat((raw_1, raw_2), dim=1)
 
 
+class PermuteImgs(object):
+    def __call__(self, images):
+        return images.permute(2, 0, 1)
+
+
 class CustomDataSet(Dataset):
     def __init__(self, main_dir, transform):
         self.main_dir = main_dir
         self.transform = transform
-        self.images = os.listdir(main_dir)
+        self.images = [x for x in os.listdir(main_dir) if (("aadr.us" in x) or ("aaxj.us" in x))]
 
     def __len__(self):
         return int(len(self.images) / 4)
@@ -167,13 +170,13 @@ class CustomDataSet(Dataset):
     def __getitem__(self, idx):
         img_loc = os.path.join(self.main_dir, self.images[idx])
         img_info = img_loc.split(sep="_")
-        label = int(img_info[-1].replace(".png", ""))
+        label = torch.tensor(float(img_info[-1].replace(".png", "")), dtype=torch.int64)
         images = []
         for i in [1, 2, 3, 5]:
             img_info[-3] = str(i)
             img_loc = str.join("_", img_info)
             image = Image.open(img_loc).convert("RGB")
-            images.append(torch.from_numpy(np.asarray(image, dtype="float32") / 127.5 - 1))
+            images.append(torch.from_numpy(np.asarray(image, dtype="float32") / 255))
 
         tensor_image = self.transform(images)
 
