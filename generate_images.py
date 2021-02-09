@@ -1,6 +1,7 @@
 from src.dataset import *
 import os
 
+
 def generate_data(args):
     index, id = -1, '???'
     try:
@@ -9,8 +10,9 @@ def generate_data(args):
         for feature in features:
             dict_images = img_dataset(data, pixels, feature, periods, max_period=max_period)
             for period, (imgs_subset, labels_subset, split_subset, ids_subset) in dict_images.items():
-                save_dataframe_as_images(os.path.join(path, feature), ids_subset, imgs_subset, labels_subset, split_subset, period)
-        
+                save_dataframe_as_images(os.path.join(path, feature), ids_subset, imgs_subset, labels_subset,
+                                         split_subset, period)
+
         return True, index
     except KeyboardInterrupt:
         return False, index
@@ -19,22 +21,24 @@ def generate_data(args):
         return False, index
 
 
-
 if __name__ == '__main__':
     import tqdm
     import argparse
     import pandas as pd
     import multiprocessing
 
-    feat_choiches = ( 'open', 'high', 'low', 'close', 'volume' )
-    period_choiches = ( 1, 2, 3, 5 )
+    feat_choiches = ('open', 'high', 'low', 'close', 'volume')
+    period_choiches = (1, 2, 3, 5)
 
     parser = argparse.ArgumentParser()
     parser.add_argument('-p', '--processes', default=None, type=int, help='Number of processes to spawn')
-    parser.add_argument('-k', '--key', default='etfs', type=str.lower, choices=('etfs', 'stocks', 'all', '*'), help='Type of data to generate')
+    parser.add_argument('-k', '--key', default='etfs', type=str.lower, choices=('etfs', 'stocks', 'all', '*'),
+                        help='Type of data to generate')
     parser.add_argument('-x', '--pixels', default=20, type=int, help='Size of the result image in pixels')
-    parser.add_argument('-f', '--features', action='append', default=[], type=str.lower, choices=feat_choiches, help='Features to calculate the images')
-    parser.add_argument('-t', '--periods', action='append', default=[], type=int, choices=period_choiches, help='Periods')
+    parser.add_argument('-f', '--features', action='append', default=[], type=str.lower, choices=feat_choiches,
+                        help='Features to calculate the images')
+    parser.add_argument('-t', '--periods', action='append', default=[], type=int, choices=period_choiches,
+                        help='Periods')
     parser.add_argument('-mt', '--max-period', default=None, type=int, help='Max period to calculate')
     parser.add_argument('-i', '--input', default='Data/dataframe.hdf5', type=str, help='File where to load the dataset')
     parser.add_argument('-o', '--output', default='Data/Images/', type=str, help='Folder where to save images')
@@ -43,8 +47,8 @@ if __name__ == '__main__':
 
     if args.key in ('all', '*'): args.key = None
     DATASET = None if args.key in ('all', '*') else args.key
-    
-    FEATURES = args.features if args.features and len(args.features) else [ 'close' ]
+
+    FEATURES = args.features if args.features and len(args.features) else ['close']
     PERIODS = args.periods if args.periods and len(args.periods) else period_choiches
     PIXELS = 20 if (args.pixels or 0) <= 0 else args.pixels
     MAX_PERIOD = args.max_period or None
@@ -57,7 +61,7 @@ if __name__ == '__main__':
 =============================
 | Processes:  | {PROCESSES}
 | Features:   | {str.join(', ', FEATURES)}
-| Periods:    | {str.join(', ', [ str(x) for x in PERIODS ])}
+| Periods:    | {str.join(', ', [str(x) for x in PERIODS])}
 | Pixels:     | {PIXELS}x{PIXELS}
 | Max Period: | {MAX_PERIOD or 'Auto'}
 | Dataset:    | {DATASET}
@@ -67,13 +71,14 @@ if __name__ == '__main__':
 =============================
 Loading Dataset...''')
     df = pd.read_hdf(INPUT, key=args.key)
-    
+
     print('Dataset Example:')
     print(df.head(5))
 
     max_index = START
     ids = tuple(df['id'].unique())[START:]
     ids_done = list(range(START))
+
 
     def make_desc():
         for min_index in range(max_index, 0, -1):
@@ -87,7 +92,7 @@ Loading Dataset...''')
             if correct:
                 return f'Factories - Min/Max index {min_index}/{max_index}'
         return f'Factories - Min/Max index 0/{max_index}'
-        
+
 
     def get_next_sub_dataset():
         index = 0
@@ -97,7 +102,8 @@ Loading Dataset...''')
             yield index, id, OUTPUT, sub_set, FEATURES, PERIODS, PIXELS, MAX_PERIOD
 
 
-    with multiprocessing.Pool(PROCESSES) as pool, tqdm.tqdm(initial=0, total=len(ids), desc=make_desc(), unit='fact') as global_bar:
+    with multiprocessing.Pool(PROCESSES) as pool, tqdm.tqdm(initial=0, total=len(ids), desc=make_desc(),
+                                                            unit='fact') as global_bar:
         for success, index in pool.imap_unordered(generate_data, iter(get_next_sub_dataset())):
             max_index = max(max_index, index)
             ids_done.append(index)

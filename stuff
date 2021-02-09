@@ -20,8 +20,9 @@
 
 # 1d block -> 20x20 (20d)
 # 2d block -> 20x20 (40d)
-# 3d block -> 20x20 (80d)
+# 3d block -> 20x20 (60d)
 # 5d block -> 20x20 (100d)
 
 # 9d inizia 1/1 finisce 10/1
 # label su open/close 11/1
+
