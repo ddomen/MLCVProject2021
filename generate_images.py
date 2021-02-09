@@ -27,8 +27,9 @@ if __name__ == '__main__':
     import pandas as pd
     import multiprocessing
 
-    feat_choiches = ('open', 'high', 'low', 'close', 'volume')
-    period_choiches = (1, 2, 3, 5)
+
+    feat_choiches = ( 'open', 'high', 'low', 'close', 'volume' , 'close-open')
+    period_choiches = ( 1, 2, 3, 5 )
 
     parser = argparse.ArgumentParser()
     parser.add_argument('-p', '--processes', default=None, type=int, help='Number of processes to spawn')
@@ -59,11 +60,11 @@ if __name__ == '__main__':
 
     print(f'''Generating Images:
 =============================
-| Processes:  | {PROCESSES}
+| Processes:  | {PROCESSES if args.processes is not None else ('Auto (' + str(PROCESSES) + ')')}
 | Features:   | {str.join(', ', FEATURES)}
 | Periods:    | {str.join(', ', [str(x) for x in PERIODS])}
 | Pixels:     | {PIXELS}x{PIXELS}
-| Max Period: | {MAX_PERIOD or 'Auto'}
+| Max Period: | {MAX_PERIOD or ('Auto (' + str(max(PERIODS)) + ')')}
 | Dataset:    | {DATASET}
 | Input:      | {INPUT}
 | Output:     | {OUTPUT}
@@ -72,12 +73,15 @@ if __name__ == '__main__':
 Loading Dataset...''')
     df = pd.read_hdf(INPUT, key=args.key)
 
+    df['close-open'] = df['close'] - df['open']
+    df['split'] = 'train'
+    
     print('Dataset Example:')
     print(df.head(5))
 
     max_index = START
     ids = tuple(df['id'].unique())[START:]
-    ids_done = list(range(START))
+    ids_done = list(range(START + 1))
 
 
     def make_desc():
@@ -95,7 +99,7 @@ Loading Dataset...''')
 
 
     def get_next_sub_dataset():
-        index = 0
+        index = START
         for id in ids:
             sub_set = df[df['id'] == id]
             index += 1

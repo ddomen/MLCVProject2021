@@ -17,6 +17,7 @@ SCHEMA = {
     'high': 'float32',
     'low': 'float32',
     'close': 'float32',
+    'close-open': 'float32',
     'volume': 'uint32',
     'trend': 'uint8',
     'split': 'str'
@@ -25,8 +26,8 @@ SCHEMA = {
 
 def get_dataframe(data_path, train_val_test_split=None, show_progress=False):
     if train_val_test_split is None:
-        train_val_test_split = [0.7, 0.1, 0.2]
-
+        train_val_test_split = [1, 0, 0]
+    
     appended_data = []
 
     files = os.listdir(data_path)
@@ -50,6 +51,7 @@ def get_dataframe(data_path, train_val_test_split=None, show_progress=False):
             stock_data.drop(stock_data.tail(1).index, inplace=True)
             # The ID of each intermediate dataframe is the name of the file without '.txt'
             stock_data['id'] = file[:-4]
+            stock_data['close-open'] = stock_data['close'] - stock_data['open']
             # Rescale in [0, 1]
             if not stock_data.empty:
                 # Assign the split names
@@ -138,7 +140,7 @@ def save_dataframe_as_images(path, ids, images, labels, splits, period):
     }
 
     for id, img, label, split in zip(ids, images, labels, splits):
-        file_name = f'{id}_{period}_{cont[split]}_{label:1d}.png'
+        file_name = f'{id}_{period}_{cont[split]:04d}_{label:1d}.png'
         img = Image.fromarray((img * 255).astype(np.uint8))
         img.save(os.path.join(path, split, file_name))
 
