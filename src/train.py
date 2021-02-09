@@ -10,14 +10,12 @@ def metric(y_pred, y_true):
 # Train one epoch
 def train(model,
           train_loader,
-          criterion,
           idxs_train):
     """Trains a neural network for one epoch.
 
     Args:
         model: the model to train.
         train_loader: the data loader containing the training data.
-        criterion: the loss to optimize.
 
     Returns:
         the loss value on the training data.
@@ -26,10 +24,10 @@ def train(model,
     loss = 0
     std = 0
 
-    model.train()
+    model._train()
     for idxs_batches, (batch, labels) in enumerate(train_loader):
         if idxs_batches in idxs_train:
-            loss_train, std_train = model.train_step(batch, labels, criterion)
+            loss_train, std_train = model.train_step(batch, labels)
             loss += loss_train
             std += std_train
             samples_train += len(batch)
@@ -43,7 +41,6 @@ def train(model,
 # Validate one epoch
 def validate(model,
              data_loader,
-             criterion,
              metric,
              idxs_val):
     """Evaluates the model.
@@ -64,7 +61,7 @@ def validate(model,
     with torch.no_grad():
         for idxs_batches, (batch, labels) in enumerate(data_loader):
             if idxs_batches in idxs_val:
-                loss_batch, acc_batch = model.validation_step(batch, labels, criterion, metric)
+                loss_batch, acc_batch = model.validation_step(batch, labels, metric)
                 loss_val += loss_batch
                 acc_val += acc_batch
                 samples_val += len(batch)
@@ -77,7 +74,6 @@ def validate(model,
 
 def training_loop(num_epochs,
                   model,
-                  criterion,
                   metric,
                   loader_train,
                   len_subset_train,
@@ -116,9 +112,9 @@ def training_loop(num_epochs,
         idxs_validation = range(i + len_subset_train, i + len_subset_train + len_subset_validation)
         for epoch in range(1, num_epochs + 1):
             time_start = timer()
-            loss_train, std_train = train(model, loader_train, criterion, idxs_train)
-            loss_val, acc_val = validate(model, loader_train, criterion, metric, idxs_validation)
-            _, train_acc = validate(model, loader_train, criterion, metric, idxs_train)
+            loss_train, std_train = train(model, loader_train, idxs_train)
+            loss_val, acc_val = validate(model, loader_train, metric, idxs_validation)
+            _, train_acc = validate(model, loader_train, metric, idxs_train)
             time_end = timer()
 
             losses_values_train.append(loss_train)

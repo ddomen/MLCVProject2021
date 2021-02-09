@@ -4,9 +4,11 @@ import numpy as np
 import pandas as pd
 from PIL import Image
 from matplotlib import cm
+import matplotlib.pyplot as plt
 from torch.utils.data import Dataset
+import random
 
-from src.encoding import gasf
+from src.encoding import gasf, gadf
 
 SCHEMA = {
     'id': 'str',
@@ -104,7 +106,7 @@ def img_dataset(df, pixels, feature, periods, max_period=None):
             time_slice = slice(max_period - period * pixels + i, i + max_period, period)
 
             # Generating and normalizing image
-            img = gasf(df[feature][time_slice])
+            img = gadf(df[feature][time_slice])
             img = (img - np.min(img)) / (np.max(img) - np.min(img))
             img = my_cm(img)[:, :, :3]
 
@@ -148,7 +150,12 @@ class ConcatenateImgs(object):
         raw_1 = torch.cat((images[0], images[1]), dim=0)
         raw_2 = torch.cat((images[2], images[3]), dim=0)
 
-        return torch.cat((raw_1, raw_2), dim=1)
+        tensor_image = torch.cat((raw_1, raw_2), dim=1)
+        #print(type(tensor_image), tensor_image.shape)
+
+        #plt.imshow(tensor_image)
+        #plt.show()
+        return tensor_image
 
 
 class PermuteImgs(object):
@@ -160,10 +167,10 @@ class CustomDataSet(Dataset):
     def __init__(self, main_dir, transform):
         self.main_dir = main_dir
         self.transform = transform
-        self.images = [x for x in os.listdir(main_dir) if (("aadr.us" in x) or ("aaxj.us" in x))]
+        self.images = [x for x in os.listdir(main_dir) if x[-12] == "1"]
 
     def __len__(self):
-        return int(len(self.images) / 4)
+        return int(len(self.images))
 
     def __getitem__(self, idx):
         img_loc = os.path.join(self.main_dir, self.images[idx])
@@ -174,7 +181,7 @@ class CustomDataSet(Dataset):
             img_info[-3] = str(i)
             img_loc = str.join("_", img_info)
             image = Image.open(img_loc).convert("RGB")
-            images.append(torch.from_numpy(np.asarray(image, dtype="float32") / 255))
+            images.append(torch.from_numpy(np.asarray(image, dtype="float32")) / 127.5 - 1)
 
         tensor_image = self.transform(images)
 
