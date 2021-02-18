@@ -2,10 +2,10 @@ import os
 import torch
 import numpy as np
 import pandas as pd
-from PIL import Image
+from PIL import Image, ImageOps
 from matplotlib import cm
-import matplotlib.pyplot as plt
 from torch.utils.data import Dataset
+import matplotlib.pyplot as plt
 import random
 
 from src.encoding import gasf, gadf
@@ -147,12 +147,16 @@ def save_dataframe_as_images(path, ids, images, labels, splits, period):
         cont[split] += 1
 
 
+def return_unique_ids(main_dir):
+    return sorted(set([x[0:4] for x in os.listdir(main_dir) if x[-12] == "1"]))
+
+
 class ConcatenateImgs(object):
     def __call__(self, images):
-        raw_1 = torch.cat((images[0], images[1]), dim=0)
-        raw_2 = torch.cat((images[2], images[3]), dim=0)
+        raw_1 = torch.cat((images[0], images[1]), dim=1)
+        raw_2 = torch.cat((images[2], images[3]), dim=1)
 
-        tensor_image = torch.cat((raw_1, raw_2), dim=1)
+        tensor_image = torch.cat((raw_1, raw_2), dim=0)
         #print(type(tensor_image), tensor_image.shape)
 
         #plt.imshow(tensor_image)
@@ -166,10 +170,11 @@ class PermuteImgs(object):
 
 
 class CustomDataSet(Dataset):
-    def __init__(self, main_dir, transform):
+    def __init__(self, main_dir, transform, id, rot=False):
         self.main_dir = main_dir
         self.transform = transform
-        self.images = [x for x in os.listdir(main_dir) if x[-12] == "1"]
+        self.images = [x for x in os.listdir(main_dir) if x[-12] == "1" and x[0:4] == id]
+        self.rot = rot
 
     def __len__(self):
         return int(len(self.images))
@@ -183,7 +188,15 @@ class CustomDataSet(Dataset):
             img_info[-3] = str(i)
             img_loc = str.join("_", img_info)
             image = Image.open(img_loc).convert("RGB")
-            images.append(torch.from_numpy(np.asarray(image, dtype="float32")) / 127.5 - 1)
+            if self.rot:
+                if i == 2:
+                    image = image.rotate(270)
+                if i == 3:
+                    image = image.rotate(90)
+                if i == 5:
+                    image = image.rotate(180)
+
+            images.append(torch.from_numpy(np.asarray(image, dtype="float32")) / 255)
 
         tensor_image = self.transform(images)
 
