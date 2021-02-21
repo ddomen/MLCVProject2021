@@ -181,12 +181,21 @@ def save_dataframe_as_images(path, ids, images, labels, splits, period):
         cont[split] += 1
 
 
+def return_unique_ids(main_dir):
+    return sorted(set([x[0:4] for x in os.listdir(main_dir) if x[-12] == "1"]))
+
+
 class ConcatenateImgs(object):
     def __call__(self, images):
-        raw_1 = torch.cat((images[0], images[1]), dim=0)
-        raw_2 = torch.cat((images[2], images[3]), dim=0)
+        raw_1 = torch.cat((images[0], images[1]), dim=1)
+        raw_2 = torch.cat((images[2], images[3]), dim=1)
 
-        return torch.cat((raw_1, raw_2), dim=1)
+        tensor_image = torch.cat((raw_1, raw_2), dim=0)
+        #print(type(tensor_image), tensor_image.shape)
+
+        #plt.imshow(tensor_image)
+        #plt.show()
+        return tensor_image
 
 
 class PermuteImgs(object):
@@ -195,13 +204,14 @@ class PermuteImgs(object):
 
 
 class CustomDataSet(Dataset):
-    def __init__(self, main_dir, transform):
+    def __init__(self, main_dir, transform, id, rot=False):
         self.main_dir = main_dir
         self.transform = transform
-        self.images = [x for x in os.listdir(main_dir) if (("aadr.us" in x) or ("aaxj.us" in x))]
+        self.images = [x for x in os.listdir(main_dir) if x[-12] == "1" and x[0:4] == id]
+        self.rot = rot
 
     def __len__(self):
-        return int(len(self.images) / 4)
+        return int(len(self.images))
 
     def __getitem__(self, idx):
         img_loc = os.path.join(self.main_dir, self.images[idx])
@@ -212,7 +222,15 @@ class CustomDataSet(Dataset):
             img_info[-3] = str(i)
             img_loc = str.join("_", img_info)
             image = Image.open(img_loc).convert("RGB")
-            images.append(torch.from_numpy(np.asarray(image, dtype="float32") / 255))
+            if self.rot:
+                if i == 2:
+                    image = image.rotate(270)
+                if i == 3:
+                    image = image.rotate(90)
+                if i == 5:
+                    image = image.rotate(180)
+
+            images.append(torch.from_numpy(np.asarray(image, dtype="float32")) / 255)
 
         tensor_image = self.transform(images)
 

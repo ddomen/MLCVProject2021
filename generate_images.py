@@ -38,6 +38,7 @@ if __name__ == '__main__':
     import pandas as pd
     import multiprocessing
 
+
     feat_choiches = ( 'open', 'high', 'low', 'close', 'volume' , 'close-open')
     period_choiches = ( 1, 2, 3, 5 )
 
@@ -109,6 +110,7 @@ Loading Dataset...''')
     N_IMG = 0
 
     glob_min_index = 0
+
 
     def make_desc():
         global glob_min_index
