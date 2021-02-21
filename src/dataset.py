@@ -2,9 +2,12 @@ import os
 import torch
 import numpy as np
 import pandas as pd
+import matplotlib.pyplot as plt
+import matplotlib.dates as mdates
 from PIL import Image
 from matplotlib import cm
 from torch.utils.data import Dataset
+from mplfinance.original_flavor import candlestick_ohlc
 
 from src.encoding import gasf, gadf
 
@@ -88,9 +91,14 @@ def get_dataframe(data_path, train_val_test_split=None, show_progress=False):
     return df
 
 
-def img_dataset(df, pixels, feature, periods, max_period=None):
+def img_dataset(df, pixels, feature, periods, max_period=None, aggregation=None, diff=True):
     my_cm = cm.get_cmap('Spectral')
     max_period = (max_period or max(periods)) * pixels
+
+    if aggregation is None:
+        aggregation = lambda d: d[0]
+
+    method = gadf if diff else gasf
 
     subset_dict = {}
 
@@ -103,10 +111,13 @@ def img_dataset(df, pixels, feature, periods, max_period=None):
 
         for i in range(len(df) - max_period):
             # Compute the temporal window of time
-            time_slice = slice(max_period - period * pixels + i, i + max_period, period)
+            time_slice = slice(max_period - period * pixels + i, i + max_period)
+
+            df_slice = df[feature][time_slice]
+            img_slice = np.array([ aggregation(df_slice[s:s + period], period) for s in range(0, len(df_slice), period) ])
 
             # Generating and normalizing image
-            img = gadf(df[feature][time_slice])
+            img = method(img_slice)
             img = (img - np.min(img)) / (np.max(img) - np.min(img))
             img = my_cm(img)[:, :, :3]
 
@@ -125,6 +136,31 @@ def img_dataset(df, pixels, feature, periods, max_period=None):
 
     return subset_dict
 
+def save_candle_dataset(path, data, pixels, window, overwrite=False):
+    data_candles = []
+    id = data['id'].iloc[0]
+    os.makedirs(path, exist_ok=True)
+    T = 0
+    for i in range(len(data) - window):
+        T += 1
+        d = data[i:i + window]
+        t = d['trend'].iloc[-1]
+        fn = os.path.join(path, f'{id}_{pixels:02d}_{window:02d}_{i:04d}_{t}.png')
+        if not overwrite and os.path.exists(fn): continue
+        c = zip(d['date'].map(mdates.date2num), d['open'], d['high'], d['low'], d['close'], d['volume'])
+        my_dpi = 96
+        fig = plt.figure(figsize=(pixels / my_dpi, pixels / my_dpi), dpi=my_dpi)
+        ax1 = plt.subplot2grid((1, 1), (0, 0))
+        candlestick_ohlc(ax1, c, width=0.4, colorup='#77d879', colordown='#db3f3f')
+        ax1.grid(False)
+        ax1.set_xticklabels([])
+        ax1.set_yticklabels([])
+        ax1.xaxis.set_visible(False)
+        ax1.yaxis.set_visible(False)
+        ax1.axis('off')
+        fig.savefig(fn, facecolor='black', pad_inches=0, transparent=False)
+        plt.close(fig)
+    return data_candles, T
 
 def save_dataframe_as_images(path, ids, images, labels, splits, period):
     os.makedirs(f"{path}/train", exist_ok=True)
