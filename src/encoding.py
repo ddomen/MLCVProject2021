@@ -12,6 +12,5 @@ def rescaling(x):
 def gasf(x):
     return np.array([[np.cos(i + j) for j in period_arc_cos(x)] for i in period_arc_cos(x)])
 
-
 def gadf(x):
     return np.array([[np.cos(i - j) for j in period_arc_cos(x)] for i in period_arc_cos(x)])

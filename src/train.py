@@ -5,10 +5,17 @@ from timeit import default_timer as timer
 
 def metric(y_pred, y_true):
     wrong = torch.abs(y_true - y_pred)
+    repo = np.array(wrong)
+    repo[repo == 1] = -1.0
+    repo[repo == 0] = 1.0
+    repo[repo == 0.5] = 0.0
+    profit = np.sum(repo)
+
     for i in range(len(wrong)):
-        if wrong[i] == -0.5 or wrong[i] == 0.5:
+        if wrong[i] == 0.5:
             wrong[i] = 1
-    return torch.sum(1 - wrong).to(torch.float32)
+
+    return torch.sum(1 - wrong).to(torch.float32), profit
 
 
 # Train one epoch
@@ -21,24 +28,13 @@ def train(model,
         model: the model to train.
         train_loader: the data loader containing the training data.
 
-    Returns:
-        the loss value on the training data.
     """
-    samples_train = 0
-    loss = 0
-    std = 0
     model._train()
     for idxs_batches, (batch, labels) in enumerate(train_loader):
         if idxs_batches in idxs_train:
-            loss_train, std_train = model.train_step(batch, labels)
-            loss += loss_train
-            std += std_train
-            samples_train += len(batch)
-
-    loss /= samples_train
-    std /= samples_train
-
-    return loss, std
+            model.train_step(batch, labels)
+    if model.method == "reinforcment":
+        model.optimize_model()
 
 
 # Validate one epoch
@@ -51,32 +47,31 @@ def validate(model,
     Args:
         model: the model to evalaute.
         data_loader: the data loader containing the validation or test data.
-        criterion: the loss function.
 
     Returns:
         the loss value on the validation data.
     """
     samples_val = 0
-    loss_val = 0.
     acc_val = 0
     number_answers = 0
 
+    if model.method == "reinforcment":
+        model.load_all_state_dict()
     model._eval()
+
     with torch.no_grad():
         for idxs_batches, (batch, labels) in enumerate(data_loader):
             if idxs_batches in idxs_val:
-                loss_batch, hit_batch, number_answer = model.validation_step(batch, labels, metric)
-                loss_val += loss_batch
+                hit_batch, number_answer, profit = model.validation_step(batch, labels, metric)
                 acc_val += hit_batch
                 number_answers += number_answer
-                samples_val += len(batch)
-
-    loss_val /= samples_val
+                samples_val += batch.shape[0]
     if number_answers != 0:
         acc_val /= number_answers
-    number_answers /= samples_val
+    else:
+        acc_val = torch.zeros(1, dtype=torch.float32)
 
-    return loss_val, acc_val, number_answers
+    return acc_val, number_answers, samples_val, profit
 
 
 def training_loop(model,
@@ -89,12 +84,9 @@ def training_loop(model,
     """Executes the training loop.
 
         Args:
-            num_epochs: the number of epochs.
             model: the mode to train.
-            criterion: the loss to minimize.
             loader_train: the data loader containing the training data.
             verbose: if true print the value of loss.
-            verbose:
             shift:
             len_subset_validation:
         Returns:
@@ -104,15 +96,14 @@ def training_loop(model,
             the time of execution in seconds for the entire loop.
 
     """
-    global loss_train, std_train, loss_val, train_acc, acc_val, time_end, time_start
+    global train_acc, acc_val, time_end, time_start
 
-    losses_values_train = []
-    losses_values_val = []
-    accuracy_values_val = []
-    accuracy_values_train = []
-    std_values_train = []
-    percent_answers_train = []
-    percent_answers_val = []
+    accuracy_values_val = 0
+    accuracy_values_train = 0
+    number_answers_train = 0
+    number_answers_val = 0
+    samples_train = 0
+    samples_val = 0
 
     time_start = timer()
     num_batches = len(loader_train)
@@ -120,30 +111,37 @@ def training_loop(model,
     for i in range(0, num_batches - (len_subset_train + len_subset_validation), shift):
         idxs_train = range(i, i + len_subset_train)
         idxs_validation = range(i + len_subset_train, i + len_subset_train + len_subset_validation)
-        loss_train, std_train = train(model, loader_train, idxs_train)
-        loss_val, acc_val, percent_answer_train = validate(model, loader_train, metric, idxs_validation)
-        _, train_acc, percent_answer_val = validate(model, loader_train, metric, idxs_train)
+        train(model, loader_train, idxs_train)
+        acc_val, number_answer_val, sample_val, profit = validate(model, loader_train, metric, idxs_validation)
 
-        losses_values_train.append(loss_train.item())
-        std_values_train.append(std_train.item())
-        losses_values_val.append(loss_val)
-        accuracy_values_val.append(acc_val.item())
-        accuracy_values_train.append(train_acc.item())
-        percent_answers_train.append(percent_answer_train)
-        percent_answers_val.append(percent_answer_val)
+        train_acc, number_answer_train, sample_train, _ = validate(model, loader_train, metric, idxs_train)
+
+        model.wallet += profit
+        accuracy_values_val += acc_val.item() * number_answer_val
+        accuracy_values_train += train_acc.item() * number_answer_train
+        number_answers_train += number_answer_train
+        number_answers_val += number_answer_val
+        samples_train += sample_train
+        samples_val += sample_val
 
         iter += 1
 
+    if number_answers_train == 0:
+        accuracy_values_train = 0.0
+    else:
+        accuracy_values_train = accuracy_values_train / number_answers_train
+    if number_answers_val == 0:
+        accuracy_values_val = 0.0
+    else:
+        accuracy_values_val = accuracy_values_val / number_answers_val
+
     time_end = timer()
     if verbose:
-        print(f'Loss: Train (mean) = [{np.mean(losses_values_train):.4f}] - Train (std) = [{np.mean(std_values_train):.4f}] - Val = [{np.mean(losses_values_val):.4f}]'
-            f' Coverage (%): Train = [{np.mean(percent_answers_train):.4f}] - Val = [{np.mean(percent_answers_val):.4f}]'
-            f' Accuracy: Train = [{np.mean(accuracy_values_train):.4f}] - Val = [{np.mean(accuracy_values_val):.4f}]'
-            f' Time (s): {(time_end - time_start):.4f} ')
+        print(f'Coverage (%): Train = [{number_answers_train / samples_train:.4f}] - Val = [{number_answers_val / samples_val:.4f}]'
+            f' Accuracy: Train = [{accuracy_values_train:.4f}] - Val = [{accuracy_values_val:.4f}]'
+            f' Wallet = [{model.wallet}] - Time (s): {(time_end - time_start):.4f} ')
 
-    return {'loss_values_train': np.mean(losses_values_train) * iter,
-            'loss_values_val': np.mean(losses_values_val) * iter,
-            'percent_answer_train': np.mean(percent_answers_train) * iter,
-            'percent_answer_val': np.mean(percent_answers_val) * iter,
-            'accuracy_train': np.mean(accuracy_values_train) * iter,
-            'accuracy_val': np.mean(accuracy_values_val) * iter}, iter
+    return {'percent_answer_train': number_answers_train / samples_train,
+            'percent_answer_val': number_answers_val / samples_val,
+            'accuracy_train': accuracy_values_train * number_answers_train,
+            'accuracy_val': accuracy_values_val * number_answers_val}, number_answers_val

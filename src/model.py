@@ -1,198 +1,188 @@
-from random import shuffle
+import itertools
+import math
+import random
 
 import numpy as np
 import torch
 
-from src.train import metric
-
 import torch.nn as nn
 from torch.nn import functional as F
 
+from src.dqn import DQN, ReplayMemory, Transition, resCNN, vggCNN, myCNN
 
-class vggCNN(nn.Module):
 
-    def __init__(self, init=None):
+class Policy(nn.Module):
+    def __init__(self, inits, lr=4e-4,
+                 type="vgg",
+                 method="classification",
+                 thresh=0.8,
+                 non_local=False):
         super().__init__()
 
-        self.cnn_1 = nn.Conv2d(in_channels=3, out_channels=32, kernel_size=3)
-        self.maxpool_1 = nn.MaxPool2d(kernel_size=2)
-        self.dropout_1 = nn.Dropout(p=0.25)
-        self.cnn_2 = nn.Conv2d(in_channels=32, out_channels=64, kernel_size=3)
-        self.cnn_3 = nn.Conv2d(in_channels=64, out_channels=64, kernel_size=3)
-        self.maxpool_2 = nn.MaxPool2d(kernel_size=2)
-        self.dropout_2 = nn.Dropout(p=0.25)
-        self.cnn_4 = nn.Conv2d(in_channels=64, out_channels=128, kernel_size=3)
-        self.cnn_5 = nn.Conv2d(in_channels=128, out_channels=128, kernel_size=3)
-        self.maxpool_3 = nn.MaxPool2d(kernel_size=2)
-        self.classifier = nn.Linear(128, 2)
-        # self.classifier.bias = nn.Parameter(torch.tensor([0.0, 1.0]))
-
-        to_init = [self.cnn_1, self.cnn_2, self.cnn_3, self.cnn_4, self.cnn_5]
-
-        if init is not None:
-            for layer in to_init:
-                init(layer.weight)
-
-    def forward(self, x):
-        x = F.relu(self.cnn_1(x))
-        x = self.dropout_1(self.maxpool_1(x))
-        x = F.relu(self.cnn_2(x))
-        x = F.relu(self.cnn_3(x))
-        x = self.dropout_2(self.maxpool_2(x))
-        x = F.relu(self.cnn_4(x))
-        x = F.relu(self.cnn_5(x))
-        x = torch.flatten(self.maxpool_3(x), start_dim=1)
-        return self.classifier(x.squeeze().squeeze())
-
-
-class Residual(nn.Module):
-    """The Residual block of ResNet."""
-
-    def __init__(self, input_channels, num_channels, strides=1, use_1x1conv=True):
-        super().__init__()
-        self.conv1 = nn.Conv2d(input_channels, num_channels,
-                               kernel_size=3, stride=strides, padding=1)
-        self.conv2 = nn.Conv2d(num_channels, num_channels,
-                               kernel_size=3, padding=1)
-        if use_1x1conv:
-            self.conv3 = nn.Conv2d(input_channels, num_channels,
-                                   kernel_size=1, stride=strides)
+        self.wallet = 100
+        self.method = method
+        if self.method == "reinforcment":
+            self.policy_net = DQN(inits, non_local, type)
+            self.target_net = DQN(inits, non_local, type)
+            self.target_net.eval()
+            for cnn in self.target_net.cnns:
+                cnn.eval()
+            self.load_all_state_dict()
+            self.target_net.eval()
+            self.optimizer_policy = torch.optim.Adam(itertools.chain(*self.policy_net.get_parameters()), lr=lr)
+            self.memory = ReplayMemory(4096)
+            self.batch_size = 128
+            self.gamma = 0
+            self.eps_start = 0.9
+            self.eps_end = 0.05
+            self.eps_decay = 200
+            self.target_update = 10
+            self.steps_done = 0
         else:
-            self.conv3 = None
-        self.bn1 = nn.BatchNorm2d(num_channels)
-        self.bn2 = nn.BatchNorm2d(num_channels)
-        self.relu = nn.ReLU(inplace=True)
+            if type is "res":
+                self.cnns = [resCNN(init, non_local=non_local) for init in inits]
+            if type is "vgg":
+                self.cnns = [vggCNN(init) for init in inits]
+            if type is "myCNN":
+                self.cnns = [myCNN(init) for init in inits]
 
-    def forward(self, X):
-        Y = F.relu(self.bn1(self.conv1(X)))
-        Y = self.bn2(self.conv2(Y))
-        if self.conv3:
-            X = self.conv3(X)
-        Y += X
+            self.thresh = thresh
+            self.optimizers = [torch.optim.Adam(cnn.parameters(), lr=lr) for cnn in self.cnns]
+            self.losses = [torch.nn.CrossEntropyLoss() for _ in self.cnns]
 
-        return F.relu(Y)
+    def select_action(self, state, eval=False):
+        sample = random.random()
+        eps_threshold = self.eps_end + (self.eps_start - self.eps_end) * \
+                        math.exp(-1. * self.steps_done / self.eps_decay)
+        self.steps_done += 1
+        if sample > eps_threshold or eval:
+            with torch.no_grad():
+                return torch.argmax(self.policy_net(state), dim=1)
+        else:
+            return torch.argmax(torch.rand(state.shape[0], 3), dim=1)
 
+    def optimize_model(self):
+        if len(self.memory) < self.batch_size:
+            return
+        transitions = self.memory.sample(self.batch_size)
+        # Transpose the batch (see https://stackoverflow.com/a/19343/3343043 for
+        # detailed explanation). This converts batch-array of Transitions
+        # to Transition of batch-arrays.
+        batch = Transition(*zip(*transitions))
 
-class resCNN(nn.Module):
-    def __init__(self, init=None):
-        super().__init__()
-        self.b1 = nn.Sequential(nn.Conv2d(3, 32, kernel_size=7, stride=2, padding=3),
-                                nn.BatchNorm2d(32), nn.ReLU(),
-                                nn.MaxPool2d(kernel_size=3, stride=2, padding=1))
-        self.b2 = Residual(32, 64, 2)
-        self.b3 = Residual(64, 128, 2)
-        self.avg_pool = nn.AdaptiveAvgPool2d((1, 1))
-        self.flatten = nn.Flatten()
-        self.classifier = nn.Linear(128, 2)
-        # self.classifier.bias = nn.Parameter(torch.tensor([1.0]))
-        to_init = [self.b1[0], self.b2.conv1, self.b2.conv2, self.b3.conv1, self.b3.conv2]
+        # Compute a mask of non-final states and concatenate the batch elements
+        # (a final state would've been the one after which simulation ended)
+        non_final_mask = torch.tensor(tuple(map(lambda s: s is not None,
+                                                batch.next_state)), dtype=torch.bool)
+        non_final_next_states = torch.cat([s.unsqueeze(dim=0) for s in batch.next_state
+                                           if s is not None])
 
-        if init is not None:
-            for layer in to_init:
-                init(layer.weight)
+        state_batch = torch.cat([state.unsqueeze(dim=0) for state in batch.state])
+        action_batch = torch.cat([action.unsqueeze(dim=0) for action in batch.action]).unsqueeze(dim=1)
+        reward_batch = torch.cat([reward.unsqueeze(dim=0) for reward in batch.reward]).unsqueeze(dim=1)
 
-    def forward(self, x):
-        x = self.b1(x)
-        x = self.b2(x)
-        x = self.b3(x)
-        x = self.avg_pool(x)
-        x = self.flatten(x)
-        return self.classifier(x)
+        # Compute Q(s_t, a) - the model computes Q(s_t), then we select the
+        # columns of actions taken. These are the actions which would've been taken
+        # for each batch state according to policy_net
+        state_action_values = self.policy_net(state_batch).gather(1, action_batch)
 
+        # Compute V(s_{t+1}) for all next states.
+        # Expected values of actions for non_final_next_states are computed based
+        # on the "older" target_net; selecting their best reward with max(1)[0].
+        # This is merged based on the mask, such that we'll have either the expected
+        # state value or 0 in case the state was final.
+        next_state_values = torch.zeros(self.batch_size)
+        next_state_values[non_final_mask], _ = torch.max(self.target_net(non_final_next_states), dim=1)
+        # Compute the expected Q values
+        expected_state_action_values = (next_state_values * self.gamma) + reward_batch.squeeze(dim=1)
 
-class CNNsubimage(nn.Module):
-    def __init__(self, output_size, init=None):
-        super().__init__()
-        self.b1 = nn.Sequential(nn.Conv2d(3, 32, kernel_size=5),
-                                nn.BatchNorm2d(32), nn.ReLU())
-        self.b2 = Residual(32, 64, 2)
-        self.avg_pool = nn.AdaptiveAvgPool2d(output_size)
-        to_init = [self.b1[0], self.b2.conv1, self.b2.conv2, self.b2.conv3]
+        # Compute Huber loss
+        loss = F.smooth_l1_loss(state_action_values.squeeze(dim=1), expected_state_action_values)
 
-        if init is not None:
-            for layer in to_init:
-                init(layer.weight)
+        # Optimize the model
+        self.optimizer_policy.zero_grad()
+        loss.backward(retain_graph=True)
+        for param in self.policy_net.parameters():
+            param.grad.data.clamp_(-1, 1)
+        self.optimizer_policy.step()
 
-    def forward(self, x):
-        x = self.b1(x)
-        x = self.b2(x)
-        return self.avg_pool(x)
+    def compute_rewards(self, actions, labels):
+        rewards = torch.zeros(actions.shape[0], dtype=torch.float)
+        for i in range(actions.shape[0]):
+            if actions[i] == 2:
+                rewards[i] = 0.5
+            else:
+                if actions[i] == labels[i]:
+                    rewards[i] = 1.0
 
-
-class myCNN(nn.Module):
-    def __init__(self, init=None):
-        super().__init__()
-
-        self.cnn_subimage_1 = CNNsubimage((1, 1), init=init)
-        self.cnn_subimage_2 = CNNsubimage((1, 1), init=init)
-        self.cnn_subimage_3 = CNNsubimage((1, 1), init=init)
-        self.cnn_subimage_4 = CNNsubimage((1, 1), init=init)
-        self.cnn_center_image = CNNsubimage((2, 2), init=init)
-        self.flatten = nn.Flatten()
-        self.classifier = nn.Linear(512, 2)
-
-    def forward(self, x):
-        sub_image_1 = self.flatten(self.cnn_subimage_1(x[:, :, 0:20, 0:20]))
-        sub_image_2 = self.flatten(self.cnn_subimage_2(x[:, :, 0:20, 20:40]))
-        sub_image_3 = self.flatten(self.cnn_subimage_3(x[:, :, 20:40, 0:20]))
-        sub_image_4 = self.flatten(self.cnn_subimage_4(x[:, :, 20:40, 20:40]))
-        sub_image_center = self.flatten(self.cnn_center_image(x[:, :, 10:30, 10:30]))
-        x = torch.cat([sub_image_1, sub_image_2, sub_image_3, sub_image_4, sub_image_center], dim=1)
-        return self.classifier(x)
-
-
-class Ensemble(nn.Module):
-    def __init__(self, inits, thresh=0.75, lr=1e-3, type="vgg"):
-        super().__init__()
-
-        if type is "res":
-            self.cnns = [resCNN(init) for init in inits]
-        if type is "vgg":
-            self.cnns = [vggCNN(init) for init in inits]
-        if type is "myCNN":
-            self.cnns = [myCNN(init) for init in inits]
-
-        self.thresh = thresh
-        self.optimizers = [torch.optim.Adam(cnn.parameters(), lr=lr, weight_decay=1e-5) for cnn in self.cnns]
-        self.losses = [torch.nn.CrossEntropyLoss() for _ in self.cnns]
+        return rewards
 
     def train_step(self, batch, labels):
-        losses = []
 
-        for cnn, optimizer, loss in zip(self.cnns, self.optimizers, self.losses):
-            optimizer.zero_grad()
-            pred_labels = cnn(batch)
-            loss_cnn = loss(pred_labels, labels)
-            loss_cnn.backward()
-            optimizer.step()
-            losses.append(loss_cnn.item() * len(batch))
+        if self.method == "reinforcment":
+            actions = self.select_action(batch)
+            rewards = self.compute_rewards(actions, labels)
 
-        return np.mean(losses), np.std(losses)
+            for i in range(batch.shape[0] - 1):
+                self.memory.push(batch[i], actions[i], batch[i + 1], rewards[i])
+        else:
+            for cnn, optimizer, loss in zip(self.cnns, self.optimizers, self.losses):
+                optimizer.zero_grad()
+                pred_labels = cnn(batch)
+                loss_cnn = loss(pred_labels, labels)
+                loss_cnn.backward()
+                optimizer.step()
 
     def validation_step(self, batch, labels, metric):
-        loss_validation = 0
-        predictions = []
-        for (cnn, loss) in zip(self.cnns, self.losses):
-            pred_labels = cnn(batch)
-            predictions.append(torch.argmax(pred_labels, dim=1).type(torch.float32))
-            loss_cnn = loss(pred_labels, labels)
-            loss_validation += loss_cnn.item() * len(batch)
 
-        means = torch.mean(torch.cat([prediction.unsqueeze(dim=1) for prediction in predictions], dim=1), dim=1)
-        results = (((means >= self.thresh).type(torch.float32) - ((1 - means) >= self.thresh).type(
-            torch.float32)) + 1) / 2
-        answers = results[results != 0.5]
-        for i in range(len(results)):
-            if results[i] != 0.5:
-                results[i] = torch.round(results[i])
+        if self.method == "reinforcment":
+            with torch.no_grad():
+                results = self.select_action(batch, eval=True).tolist()
+                answers = 0
+                for i in range(len(results)):
+                    if results[i] == 2:
+                        results[i] = 0.5
+                    else:
+                        answers += 1
 
-        hit_batch = metric(results, labels)
-        return loss_validation / len(self.cnns), hit_batch, len(answers)
+                if self.method == "reinforcment":
+                    results = torch.tensor(results, dtype=torch.float)
+        else:
+            predictions = []
+            for (cnn, loss) in zip(self.cnns, self.losses):
+                pred_labels = F.softmax(cnn(batch), dim=1)
+                predictions.append(torch.argmax(pred_labels, dim=1).type(torch.float32))
+                means = torch.mean(torch.cat([prediction.unsqueeze(dim=1) for prediction in predictions], dim=1), dim=1)
+                results = (((means >= self.thresh).type(torch.float32) - ((1 - means) >= self.thresh).type(
+                    torch.float32)) + 1) / 2
+                answers = 0
+                for i in range(len(results)):
+                    if results[i] != 0.5:
+                        answers += 1
+
+        hit_batch, profit = metric(results, labels)
+
+        return hit_batch, answers, profit
 
     def _train(self):
-        for cnn in self.cnns:
-            cnn.train()
+        if self.method == "reinforcment":
+            self.policy_net.train()
+            for cnn in self.policy_net.cnns:
+                cnn.train()
+        else:
+            for cnn in self.cnns:
+                cnn.train()
 
     def _eval(self):
-        for cnn in self.cnns:
-            cnn.eval()
+        if self.method == "reinforcment":
+            self.policy_net.eval()
+            for cnn in self.policy_net.cnns:
+                cnn.eval()
+        else:
+            for cnn in self.cnns:
+                cnn.eval()
+
+    def load_all_state_dict(self):
+        for i in range(len(self.policy_net.cnns)):
+            self.target_net.cnns[i].load_state_dict(self.policy_net.cnns[i].state_dict())
+        self.target_net.output.load_state_dict(self.policy_net.output.state_dict())
