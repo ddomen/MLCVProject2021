@@ -93,6 +93,8 @@ if __name__ == '__main__':
 =============================
 Loading Dataset...''')
 
+    if MAX_PERIOD is None: MAX_PERIOD = max(PERIODS)
+
     df = pd.read_hdf(INPUT, key=args.key)
 
     df['close-open'] = df['close'] - df['open']

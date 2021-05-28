@@ -13,7 +13,6 @@ def gasf(x):
     period = period_arc_cos(x)
     return np.array([[np.cos(i + j) for j in period] for i in period])
 
-
 def gadf(x):
     period = period_arc_cos(x)
     return np.array([[np.sin(i - j) for j in period] for i in period])

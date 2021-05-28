@@ -8,6 +8,9 @@ from PIL import Image
 from matplotlib import cm
 from torch.utils.data import Dataset
 from mplfinance.original_flavor import candlestick_ohlc
+import matplotlib.pyplot as plt
+from torchvision.transforms import transforms
+
 
 from src.encoding import gasf, gadf
 
@@ -28,7 +31,7 @@ SCHEMA = {
 def get_dataframe(data_path, train_val_test_split=None, show_progress=False):
     if train_val_test_split is None:
         train_val_test_split = [1, 0, 0]
-    
+
     appended_data = []
 
     files = os.listdir(data_path)
@@ -108,10 +111,12 @@ def img_dataset(df, pixels, feature, periods, max_period=None, aggregation=None,
         labels_list = []
         split_list = []
         ids_list = []
-
+        first_time = True
         for i in range(len(df) - max_period):
             # Compute the temporal window of time
             time_slice = slice(max_period - period * pixels + i, i + max_period)
+            if first_time:
+                first_time = False
 
             df_slice = df[feature][time_slice]
             img_slice = np.array([ aggregation(df_slice[s:s + period], period) for s in range(0, len(df_slice), period) ])
@@ -181,21 +186,43 @@ def save_dataframe_as_images(path, ids, images, labels, splits, period):
         cont[split] += 1
 
 
+def show_tensor_image(image):
+    plt.imshow(transforms.ToPILImage()(image))
+    plt.show()
+
+
 def return_unique_ids(main_dir):
     return sorted(set([x[0:4] for x in os.listdir(main_dir) if x[-12] == "1"]))
+
+
+def get_rhombus(h=40, w=40):
+
+    tri_rtc = np.fromfunction(lambda i, j: i >= j, (h // 2, w // 2), dtype=int)
+    tri_ltc = np.flip(tri_rtc, axis=1)
+    rhombus = np.vstack(
+        (np.hstack((tri_ltc, tri_rtc[:, 0:])), np.flip(np.hstack((tri_ltc, tri_rtc[:, 0:])), axis=0)[0:, :]))
+
+    return torch.tensor(rhombus, dtype=torch.float32)
 
 
 class ConcatenateImgs(object):
     def __call__(self, images):
         raw_1 = torch.cat((images[0], images[1]), dim=1)
         raw_2 = torch.cat((images[2], images[3]), dim=1)
-
         tensor_image = torch.cat((raw_1, raw_2), dim=0)
-        #print(type(tensor_image), tensor_image.shape)
+        # print(type(tensor_image), tensor_image.shape)
 
-        #plt.imshow(tensor_image)
-        #plt.show()
+        # plt.imshow(tensor_image)
+        # plt.show()
         return tensor_image
+
+
+class Rhombus(object):
+    def __call__(self, images):
+        rhombus = get_rhombus().unsqueeze(dim=0).expand_as(images)
+        images = images * rhombus
+
+        return images
 
 
 class PermuteImgs(object):
@@ -218,17 +245,17 @@ class CustomDataSet(Dataset):
         img_info = img_loc.split(sep="_")
         label = torch.tensor(float(img_info[-1].replace(".png", "")), dtype=torch.int64)
         images = []
-        for i in [1, 2, 3, 5]:
+        for i in [1, 3, 2, 5]:
             img_info[-3] = str(i)
             img_loc = str.join("_", img_info)
             image = Image.open(img_loc).convert("RGB")
             if self.rot:
-                if i == 2:
+                if i == 1:
                     image = image.rotate(270)
-                if i == 3:
-                    image = image.rotate(90)
-                if i == 5:
+                if i == 2:
                     image = image.rotate(180)
+                if i == 5:
+                    image = image.rotate(90)
 
             images.append(torch.from_numpy(np.asarray(image, dtype="float32")) / 255)
 
