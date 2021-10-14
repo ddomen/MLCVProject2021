@@ -49,7 +49,7 @@ class nonLocalBlock(nn.Module):
         x_2 = self.flatten(self.fi(x))
         x_3 = self.flatten(self.gi(x))
         x_3 = x_3.view(x_3.shape[0], x_3.shape[2], x_3.shape[1])
-        x_1_2 = F.softmax(torch.matmul(x_1, x_2), dim=0)
+        x_1_2 = F.softmax(torch.matmul(x_1, x_2), dim=1)
 
         x_1_2_3 = self.out(torch.transpose(torch.matmul(x_1_2, x_3), dim0=1, dim1=2).view(x.shape[0], -1, x.shape[2], x.shape[3]))
         return x + x_1_2_3
@@ -127,10 +127,12 @@ class Residual(nn.Module):
 class resCNN(nn.Module):
     def __init__(self, init=None, non_local=False):
         super().__init__()
-        self.b1 = nn.Sequential(nn.Conv2d(3, 32, kernel_size=7, stride=2),
-                                nn.BatchNorm2d(32), nn.ReLU(),
-                                nn.MaxPool2d(kernel_size=2),
-                                nonLocalBlock(32))
+        self.b1 = nn.Sequential(*([
+            nn.Conv2d(3, 32, kernel_size=7, stride=2),
+            nn.BatchNorm2d(32), nn.ReLU(),
+            nn.MaxPool2d(kernel_size=2)
+            ] + ([ nonLocalBlock(32) ] if non_local else []))
+        )
         self.b2 = Residual(32, 64, 2, non_local=non_local)
         self.b3 = Residual(64, 128, 2, non_local=non_local)
         self.avg_pool = nn.AdaptiveAvgPool2d((1, 1))
@@ -152,6 +154,10 @@ class resCNN(nn.Module):
 
 
 class CNNsubimage(nn.Module):
+    '''
+    Similar to Residual Block but optimized for rhombus cutted images
+    (test layer, not used in the final application)
+    '''
     def __init__(self, output_size, init=None):
         super().__init__()
         self.b1 = nn.Sequential(nn.Conv2d(3, 32, kernel_size=7),
@@ -173,6 +179,10 @@ class CNNsubimage(nn.Module):
 
 
 class myCNN(nn.Module):
+    '''
+    Network: cut rhombus from images and uses a Residual Block
+    to compute image features
+    '''
     def __init__(self, init=None):
         super().__init__()
 

@@ -210,10 +210,6 @@ class ConcatenateImgs(object):
         raw_1 = torch.cat((images[0], images[1]), dim=1)
         raw_2 = torch.cat((images[2], images[3]), dim=1)
         tensor_image = torch.cat((raw_1, raw_2), dim=0)
-        # print(type(tensor_image), tensor_image.shape)
-
-        # plt.imshow(tensor_image)
-        # plt.show()
         return tensor_image
 
 
